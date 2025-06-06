@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: dlp
+  name: dlp-main
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dlp-main
+  template:
+    metadata:
+      labels:
+        app: dlp-main
+    spec:
+      # Shared volume for DLP policy ConfigMap
+      volumes:
+        - name: dlp-policy-volume
+          configMap:
+            name: dlp-policies
+      # Sidecar containers using the new Kubernetes sidecar pattern (restartPolicy: Always)
+      initContainers:
+        # Ingress DLP sidecar: inspects and enforces DLP on incoming traffic
+        - name: dlp-ingress
+          restartPolicy: Always
+          image: ukediahpe/dlp-ingress:latest
+          imagePullPolicy: Always
+          env:
+            - name: UPSTREAM_PORT
+              value: "8000"  # Port of the main application container
+            - name: DLP_POLICY_PATH
+              value: "/etc/dlp/patterns.json"
+          volumeMounts:
+            - name: dlp-policy-volume
+              mountPath: /etc/dlp
+        # Egress DLP sidecar: inspects and enforces DLP on outgoing traffic
+        - name: dlp-egress
+          restartPolicy: Always
+          image: ukediahpe/dlp-egress:latest
+          imagePullPolicy: Always
+          env:
+            - name: DLP_POLICY_PATH
+              value: "/etc/dlp/patterns.json"
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]  # Required for iptables redirection
+          volumeMounts:
+            - name: dlp-policy-volume
+              mountPath: /etc/dlp
+      # Main application container
+      containers:
+        - name: dlp-main
+          image: ukediahpe/dlp-main:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000  # Main app listens here
+
+---
+# Service to expose the DLP-protected application via the ingress proxy
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: dlp
+  name: dlp-main-service
+spec:
+  type: ClusterIP
+  selector:
+    app: dlp-main
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8081   # Forwards to ingress proxy (dlp-ingress sidecar)
+
+---
+# ConfigMap containing DLP patterns (policies)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dlp-policies
+  namespace: dlp
+data:
+  patterns.json: |
+    [
+      {"type": "pii", "name": "US SSN", "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b", "action": "block", "description": "US Social Security Number"},
+      {"type": "pii", "name": "Credit Card", "pattern": "\\b4[0-9]{12}(?:[0-9]{3})?\\b", "action": "block", "description": "Visa Credit Card"},
+      {"type": "secret", "name": "AWS Key", "pattern": "AKIA[0-9A-Z]{16}", "action": "alert", "description": "AWS Access Key"},
+      {"type": "pii", "name": "Email", "pattern": "[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+", "action": "mask", "description": "Email Address"},
+      {"type": "financial", "name": "IBAN", "pattern": "\\b[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}\\b", "action": "block", "description": "International Bank Account Number"},
+      {"type": "attack", "name": "SQL Injection", "pattern": "(?i)(union(.*?)select|select(.*?)from|insert(.*?)into|drop(.*?)table|or\\s+1=1|--|;--|;|/\\*|\\*/|@@|@|char\\(|nchar\\(|varchar\\(|alter(.*?)table|update(.*?)set|delete(.*?)from)", "action": "block", "description": "Potential SQL injection attempt"},
+      {"type": "attack", "name": "Command Injection", "pattern": "(;|&&|\\|\\||\\$\\(|`|\\b(sudo|chmod|chown|cat|whoami|passwd|/etc/passwd)\\b)", "action": "block", "description": "Potential command injection or privilege escalation attempt"}
+    ]
