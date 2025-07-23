@@ -86,6 +86,6 @@ data:
       {"type": "secret", "name": "AWS Key", "pattern": "AKIA[0-9A-Z]{16}", "action": "alert", "description": "AWS Access Key"},
       {"type": "pii", "name": "Email", "pattern": "[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+", "action": "mask", "description": "Email Address"},
       {"type": "financial", "name": "IBAN", "pattern": "\\b[A-Z]{2}[0-9]{2}[A-Z0-9]{1,30}\\b", "action": "block", "description": "International Bank Account Number"},
-      {"type": "attack", "name": "SQL Injection", "pattern": "(?i)(union(.*?)select|select(.*?)from|insert(.*?)into|drop(.*?)table|or\\s+1=1|--|;--|;|/\\*|\\*/|@@|@|char\\(|nchar\\(|varchar\\(|alter(.*?)table|update(.*?)set|delete(.*?)from)", "action": "block", "description": "Potential SQL injection attempt"},
+      {"type": "attack", "name": "SQL Injection", "pattern": "(?i)(union(.*?)select|select(.*?)from|insert(.*?)into|drop(.*?)table|or\\s+1=1|--|;--|;|/\\*[\\s\\S]*?\\*/|@@|char\\(|nchar\\(|varchar\\(|alter(.*?)table|update(.*?)set|delete(.*?)from)", "action": "block", "description": "Potential SQL injection attempt"},
       {"type": "attack", "name": "Command Injection", "pattern": "(;|&&|\\|\\||\\$\\(|`|\\b(sudo|chmod|chown|cat|whoami|passwd|/etc/passwd)\\b)", "action": "block", "description": "Potential command injection or privilege escalation attempt"}
     ]
